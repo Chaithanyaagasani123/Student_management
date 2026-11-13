@@ -5,11 +5,17 @@
 <title>Student Management System</title>
 <style>
   body { font-family: Arial; background:#f2f4f8; margin:0; padding:20px; }
-  .box { max-width:850px; margin:auto; background:#fff; padding:20px; border-radius:8px; }
+  .box { max-width:900px; margin:auto; background:#fff; padding:20px; border-radius:8px; }
   h2 { text-align:center; }
-  input { padding:8px; margin:4px; width:170px; }
-  button { padding:8px 14px; border:none; border-radius:4px; cursor:pointer; color:#fff; background:#2d7ff9; }
-  .del { background:#e53935; } .edit { background:#fb8c00; }
+  .form { display:flex; flex-wrap:wrap; gap:12px; }
+  .field { flex:1 1 190px; display:flex; flex-direction:column; }
+  input, select { padding:9px; border:1px solid #bbb; border-radius:4px; font-size:14px; }
+  input.bad, select.bad { border-color:#e53935; }
+  .err { color:#e53935; font-size:12px; min-height:16px; margin-top:3px; }
+  button { padding:9px 16px; border:none; border-radius:4px; cursor:pointer; color:#fff; background:#2d7ff9; font-size:14px; }
+  #saveBtn.update { background:#43a047; }
+  .del { background:#e53935; } .edit { background:#fb8c00; } .gray { background:#777; }
+  .actions { margin-top:8px; }
   table { width:100%; border-collapse:collapse; margin-top:20px; }
   th, td { border:1px solid #ddd; padding:8px; text-align:center; }
   th { background:#2d7ff9; color:#fff; }
@@ -19,12 +25,43 @@
 <div class="box">
   <h2>Student Management System</h2>
   <input type="hidden" id="id">
-  <input id="name" placeholder="Name">
-  <input id="email" placeholder="Email">
-  <input id="course" placeholder="Course">
-  <input id="age" type="number" placeholder="Age">
-  <button onclick="saveStudent()">Save</button>
-  <button onclick="clearForm()" style="background:#777">Clear</button>
+
+  <div class="form">
+    <div class="field">
+      <input id="name" placeholder="Name">
+      <span class="err" id="nameErr"></span>
+    </div>
+    <div class="field">
+      <input id="email" placeholder="Email (example@gmail.com)">
+      <span class="err" id="emailErr"></span>
+    </div>
+    <div class="field">
+      <select id="course">
+        <option value="">-- Select Course --</option>
+        <option>B.Tech</option>
+        <option>M.Tech</option>
+        <option>BCA</option>
+        <option>MCA</option>
+        <option>B.Sc</option>
+        <option>M.Sc</option>
+        <option>B.Com</option>
+        <option>M.Com</option>
+        <option>BBA</option>
+        <option>MBA</option>
+        <option>CA</option>
+      </select>
+      <span class="err" id="courseErr"></span>
+    </div>
+    <div class="field">
+      <input id="age" type="number" placeholder="Age">
+      <span class="err" id="ageErr"></span>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="saveBtn" onclick="saveStudent()">Save</button>
+    <button class="gray" onclick="clearForm()">Clear</button>
+  </div>
 
   <table>
     <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Course</th><th>Age</th><th>Action</th></tr></thead>
@@ -34,54 +71,112 @@
 
 <script>
 const API = "/api/students";
+let students = [];
+
+function esc(t) {
+  return String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
 
 async function loadStudents() {
   const res = await fetch(API);
-  const data = await res.json();
-  document.getElementById("list").innerHTML = data.map(s => `
+  students = await res.json();
+  document.getElementById("list").innerHTML = students.map(s => `
     <tr>
-      <td>${s.id}</td><td>${s.name}</td><td>${s.email}</td><td>${s.course}</td><td>${s.age}</td>
+      <td>${s.id}</td><td>${esc(s.name)}</td><td>${esc(s.email)}</td>
+      <td>${esc(s.course)}</td><td>${s.age ?? "-"}</td>
       <td>
-        <button class="edit" onclick='editStudent(${JSON.stringify(s)})'>Edit</button>
+        <button class="edit" onclick="editStudent(${s.id})">Edit</button>
         <button class="del" onclick="deleteStudent(${s.id})">Delete</button>
       </td>
     </tr>`).join("");
 }
 
+function setError(field, msg) {
+  document.getElementById(field + "Err").textContent = msg;
+  document.getElementById(field).classList.toggle("bad", !!msg);
+  return !msg;
+}
+
+function validate() {
+  const name = document.getElementById("name").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const course = document.getElementById("course").value;
+  const ageText = document.getElementById("age").value.trim();
+  let ok = true;
+
+  if (!name) ok = setError("name", "Please enter name") && ok;
+  else if (!/^[A-Za-z ]{2,50}$/.test(name)) ok = setError("name", "Name must have only letters (2-50)") && ok;
+  else setError("name", "");
+
+  if (!email) ok = setError("email", "Please enter email") && ok;
+  else if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) ok = setError("email", "Please enter a valid email") && ok;
+  else setError("email", "");
+
+  if (!course) ok = setError("course", "Please select a course") && ok;
+  else setError("course", "");
+
+  if (ageText === "") ok = setError("age", "Please enter age") && ok;
+  else if (!Number.isInteger(Number(ageText)) || Number(ageText) < 15 || Number(ageText) > 60)
+    ok = setError("age", "Please enter a valid age (15 to 60)") && ok;
+  else setError("age", "");
+
+  return ok;
+}
 async function saveStudent() {
+  if (!validate()) return;
   const id = document.getElementById("id").value;
   const student = {
-    name: document.getElementById("name").value,
-    email: document.getElementById("email").value,
+    name: document.getElementById("name").value.trim(),
+    email: document.getElementById("email").value.trim(),
     course: document.getElementById("course").value,
-    age: parseInt(document.getElementById("age").value) || null
+    age: parseInt(document.getElementById("age").value)
   };
-  if (!student.name) { alert("Please enter a name"); return; }
-  await fetch(id ? API + "/" + id : API, {
+
+  const duplicate = students.some(s =>
+    (s.email || "").toLowerCase() === student.email.toLowerCase() && String(s.id) !== id);
+  if (duplicate) { setError("email", "This email already exists"); return; }
+
+  const res = await fetch(id ? API + "/" + id : API, {
     method: id ? "PUT" : "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(student)
   });
+  if (res.status === 409) { setError("email", "This email already exists"); return; }
+
   clearForm();
   loadStudents();
 }
 
-function editStudent(s) {
+function editStudent(id) {
+  const s = students.find(x => x.id === id);
   document.getElementById("id").value = s.id;
-  document.getElementById("name").value = s.name;
-  document.getElementById("email").value = s.email;
-  document.getElementById("course").value = s.course;
-  document.getElementById("age").value = s.age;
+  document.getElementById("name").value = s.name || "";
+  document.getElementById("email").value = s.email || "";
+  const sel = document.getElementById("course");
+  if (s.course && ![...sel.options].some(o => o.value === s.course)) {
+    sel.add(new Option(s.course, s.course));
+  }
+  sel.value = s.course || "";
+  document.getElementById("age").value = s.age ?? "";
+  const btn = document.getElementById("saveBtn");
+  btn.textContent = "Update";
+  btn.classList.add("update");
+  window.scrollTo(0, 0);
 }
 
 async function deleteStudent(id) {
   if (!confirm("Delete this student?")) return;
   await fetch(API + "/" + id, { method: "DELETE" });
+  clearForm();
   loadStudents();
 }
 
 function clearForm() {
   ["id","name","email","course","age"].forEach(f => document.getElementById(f).value = "");
+  ["name","email","course","age"].forEach(f => setError(f, ""));
+  const btn = document.getElementById("saveBtn");
+  btn.textContent = "Save";
+  btn.classList.remove("update");
 }
 
 loadStudents();

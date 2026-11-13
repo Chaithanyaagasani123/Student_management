@@ -1,6 +1,7 @@
 package com.student.studentmanagement;
 import java.util.List;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,12 +21,19 @@ public class StudentController {
     public List<Student> all() { return repo.findAll(); }
 
     @PostMapping
-    public Student add(@RequestBody Student s) { return repo.save(s); }
+    public ResponseEntity<?> add(@RequestBody Student s) {
+        if (repo.findByEmailIgnoreCase(s.getEmail()).isPresent())
+            return ResponseEntity.status(409).body("This email already exists");
+        return ResponseEntity.ok(repo.save(s));
+    }
 
     @PutMapping("/{id}")
-    public Student update(@PathVariable Long id, @RequestBody Student s) {
+    public ResponseEntity<?> update(@PathVariable Long id, @RequestBody Student s) {
+        var existing = repo.findByEmailIgnoreCase(s.getEmail());
+        if (existing.isPresent() && !existing.get().getId().equals(id))
+            return ResponseEntity.status(409).body("This email already exists");
         s.setId(id);
-        return repo.save(s);
+        return ResponseEntity.ok(repo.save(s));
     }
 
     @DeleteMapping("/{id}")
